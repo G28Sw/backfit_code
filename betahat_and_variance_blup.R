@@ -90,7 +90,7 @@ backfitting_random_effect <-function(y,x,f1,f2,lambda_a,lambda_b,epsilon,max_ite
   iter = 0
   relative_change = epsilon+2
   
-  while((relative_change > epsilon)&(iter<=max_iter)){ 
+  while((relative_change > epsilon)&(iter<=(max_iter-1))){ 
     iter = iter+1
     deltaf=0
     
@@ -108,14 +108,14 @@ backfitting_random_effect <-function(y,x,f1,f2,lambda_a,lambda_b,epsilon,max_ite
     deltaf=mean((new_a_haty[f1]-a_haty[f1])^2)+mean((new_b_haty[f2]-b_haty[f2])^2)
     dd = mean((a_haty[f1]+b_haty[f2])^2)
     relative_change = deltaf/dd
-    if(trace.it){cat("relative change in blup estimate iterations : ",relative_change,"\n")}
+    if(trace.it){cat("BLUP iter ",iter," relative change in blup estimate iterations : ",relative_change,"\n")}
     a_haty = new_a_haty
     b_haty = new_b_haty
     
   }
   
   
-  l = list("a_hat"= new_a_haty, "b_hat" = new_b_haty)
+  l = list("a_hat"= new_a_haty, "b_hat" = new_b_haty, "blup_iter" = iter)
   
   return(l)
   
@@ -136,7 +136,7 @@ backfitting_covariance_centering <-function(y,x,f1,f2,lambda_a,lambda_b,epsilon,
   iter = 0
   relative_change = epsilon+2
   
-  while((relative_change > epsilon)&(iter<=max_iter)){ 
+  while((relative_change > epsilon)&(iter<=(max_iter-1))){ 
     iter = iter+1
     deltaf=0
     
@@ -157,7 +157,7 @@ backfitting_covariance_centering <-function(y,x,f1,f2,lambda_a,lambda_b,epsilon,
     deltaf=mean((preda_old-preda)^2)+mean((predb_old-predb)^2)
     dd = mean((preda_old+predb_old)^2)
     relative_change = deltaf/dd
-    if(trace.it){cat("relative change in betahat and covariance betahat iterations is : ",relative_change,"\n")}
+    if(trace.it){cat("iter ",iter," relative change in betahat and covariance betahat iterations is : ",relative_change,"\n")}
     
   }
   fitted_val = preda+predb
@@ -181,11 +181,11 @@ backfitting_betahat_covariance <-function(y,x,f1,f2,epsilon,max_iter,random_ef=F
   out_cov_centering = backfitting_covariance_centering(y,x,f1,f2,lambda_a,lambda_b,epsilon,max_iter,trace.it)
   resid_sx = x - out_cov_centering$fitted_val#out_cov$fitted_val
   backfit_niter = out_cov_centering$Iteration
-  xwx_inv = t(x)%*%resid_sx
-  betahat = solve(xwx_inv)%*%t(resid_sx)%*%y
+  xt_vinv_x = t(x)%*%resid_sx
+  betahat = solve(xt_vinv_x)%*%t(resid_sx)%*%y
   
 
-  cov_gls_through_backfitting = sigma_sq_e*solve(xwx_inv)
+  cov_gls_through_backfitting = sigma_sq_e*solve(xt_vinv_x)
   #naive cov matrix with problem at (1,1)
   
   resid_sx_f1 = tibble(f1,as_tibble(resid_sx))
@@ -197,14 +197,12 @@ backfitting_betahat_covariance <-function(y,x,f1,f2,epsilon,max_iter,random_ef=F
   ZB_t_resid_sx = data.matrix(ZB_t_resid_sx[,-1])
   
   temp_cov = sigma_sq_e*t(resid_sx)%*%resid_sx + (sigma_sq_e/lambda_a) * t(ZA_t_resid_sx) %*% ZA_t_resid_sx +(sigma_sq_e/lambda_b) * t(ZB_t_resid_sx) %*% ZB_t_resid_sx 
-  cov_gls_backfitting_sandwiched = solve(xwx_inv) %*% temp_cov %*% solve(xwx_inv)
+  cov_gls_backfitting_sandwiched = solve(xt_vinv_x) %*% temp_cov %*% solve(xt_vinv_x)
   
   if(var_lm_under_gls_ind){V_lm_under_gls = var_betahat_lm_under_gls(x,f1,f2,lambdas)}
-  end_time = Sys.time()
   
-  time_to_compute = difftime(end_time,start_time,unit="secs")
   l = list("betahat"=betahat,"covariance_matrix"=cov_gls_backfitting_sandwiched,
-           "Computational_Time" = time_to_compute, "Iteration" = backfit_niter, 
+           "Iteration" = backfit_niter, 
            "lambdas" = lambdas)  
 
   if(random_ef){
@@ -212,10 +210,15 @@ backfitting_betahat_covariance <-function(y,x,f1,f2,epsilon,max_iter,random_ef=F
       max_iter=max_iter,trace.it=trace.it)
     l[["a_hat"]] = rf_resu$a_hat
     l[["b_hat"]] = rf_resu$b_hat
+    l[["blup_iter"]] = rf_resu$blup_iter
   }
   if(var_lm_under_gls_ind){
     l[["var_lm_under_gls"]] = V_lm_under_gls 
   }
+  end_time = Sys.time()
+  
+  time_to_compute = difftime(end_time,start_time,unit="secs")
+  l[["Computational_time"]] = time_to_compute
   
 return(l)
 }
